@@ -286,7 +286,7 @@ def to_linenetworkx(data):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--device', type=str, default='cpu')
+    parser.add_argument('--device', type=str, default='cuda')
     parser.add_argument('--dataset', type=str, default='Cora')
     parser.add_argument('--dataset_path', type=str, default="./datasets")
     parser.add_argument('--param', type=str, default='local:cora.json')
