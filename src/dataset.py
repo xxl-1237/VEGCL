@@ -1,8 +1,6 @@
 from torch_geometric.datasets import WikiCS, Coauthor, Amazon, Planetoid
 import torch_geometric.transforms as T
 
-# pyg输入格式的数据集，你也可以多加入几个数据集，只需要改这个参数，可以参考下torch_geometric.dataset这个函数
-# 在百度上面搜就有的
 def get_dataset(path, name):
     assert name in ['WikiCS', 'Coauthor-CS', 'Amazon-Computers', 'Amazon-Photo','Cora','CiteSeer', 'PubMed']
     name = 'dblp' if name == 'DBLP' else name
