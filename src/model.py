@@ -5,8 +5,6 @@ import torch.nn.functional as F
 import numpy as np
 from torch_geometric.nn import GCNConv
 
-
-# pytorch神经网络框架，搭建的encoder，具体细节可以看transformers的encoder和decoder，本质是编码器
 class Encoder(nn.Module):
     def __init__(self,
                  in_channels: int,
@@ -52,7 +50,7 @@ class Encoder(nn.Module):
                 hs.append(self.activation(self.conv[i](u, edge_index)))
             return hs[-1]
 
-#这个是model主要的框架，
+
 class CSGCL(torch.nn.Module):
     def __init__(self,
                  encoder: Encoder,
@@ -67,7 +65,6 @@ class CSGCL(torch.nn.Module):
         self.fc2 = torch.nn.Linear(num_proj_hidden, num_hidden)
         self.num_hidden = num_hidden
 
-    # 前向传播公式，用到的是pyg相结合的方式，你可以细看一下这个框架，输入的是属性矩阵x和邻接矩阵edge_index
     def forward(self,
                 x: torch.Tensor,
                 edge_index: torch.Tensor) -> torch.Tensor:
@@ -85,7 +82,6 @@ class CSGCL(torch.nn.Module):
         z2 = F.normalize(z2)
         return torch.mm(z1, z2.t())
 
-    # 半监督损失函数（semi_loss）
     def semi_loss(self, z1: torch.Tensor, z2: torch.Tensor):
         f = lambda x: torch.exp(x / self.tau)
         refl_sim = f(self.sim(z1, z1))
@@ -95,7 +91,7 @@ class CSGCL(torch.nn.Module):
             between_sim.diag()
             / (refl_sim.sum(1) + between_sim.sum(1) - refl_sim.diag()))
 
-    # 批次半监督损失函数（batched_semi_loss）
+ 
     def batched_semi_loss(self, z1: torch.Tensor, z2: torch.Tensor,
                               batch_size: int):
         # Space complexity: O(BN) (semi_loss: O(N^2))
@@ -118,136 +114,30 @@ class CSGCL(torch.nn.Module):
 
         return torch.cat(losses)
 
-    # 总体损失函数（loss）
     def loss(self, z1: torch.Tensor, z2: torch.Tensor,
-                 mean: bool = True, batch_size: int = 0):
+         subset_1: torch.Tensor = None,  # New: mask for View 1 kept nodes
+         mean: bool = True, batch_size: int = 0):
+        if subset_1 is not None:
+        # Align z2 to match z1's kept nodes (z1 already corresponds to subset_1)
+            kept_indices = subset_1.nonzero().squeeze()  # Original indices of kept nodes
+            z2_aligned = z2[kept_indices]  # Extract from full z2
+        else:
+            z2_aligned = z2  # No alignment needed if no dropping
+    
         h1 = self.projection(z1)
-        h2 = self.projection(z2)
-
+        h2 = self.projection(z2_aligned)  # Project aligned embeddings
+    
         if batch_size == 0:
             l1 = self.semi_loss(h1, h2)
             l2 = self.semi_loss(h2, h1)
         else:
             l1 = self.batched_semi_loss(h1, h2, batch_size)
             l2 = self.batched_semi_loss(h2, h1, batch_size)
-
+    
         ret = (l1 + l2) * 0.5
         ret = ret.mean() if mean else ret.sum()
-
         return ret
 
-    # def _infonce(self,
-    #               z1: torch.Tensor,
-    #               z2: torch.Tensor) -> torch.Tensor:
-    #
-    #     temp = lambda x: torch.exp(x / self.tau)
-    #     refl_sim = temp(self._sim(z1, z1))
-    #     between_sim = temp(self._sim(z1, z2))
-    #     return -torch.log(between_sim.diag() / (refl_sim.sum(1) + between_sim.sum(1) - refl_sim.diag()))
-    #
-    # def _batched_infonce(self,
-    #                       z1: torch.Tensor,
-    #                       z2: torch.Tensor,
-    #                       batch_size: int) -> torch.Tensor:
-    #     device = z1.device
-    #     num_nodes = z1.size(0)
-    #     num_batches = (num_nodes - 1) // batch_size + 1
-    #     f = lambda x: torch.exp(x / self.tau)
-    #     indices = torch.arange(0, num_nodes).to(device)
-    #     losses = []
-    #     for i in range(num_batches):
-    #         mask = indices[i * batch_size:(i + 1) * batch_size]
-    #         refl_sim = f(self._sim(z1[mask], z1))
-    #         between_sim = f(self._sim(z1[mask], z2))
-    #         losses.append(-torch.log(between_sim[:, i * batch_size:(i + 1) * batch_size].diag()
-    #                                  / (refl_sim.sum(1) + between_sim.sum(1)
-    #                                     - refl_sim[:, i * batch_size:(i + 1) * batch_size].diag())))
-    #     return torch.cat(losses)
-    #
-    # def _team_up(self,
-    #              z1: torch.Tensor,
-    #              z2: torch.Tensor,
-    #              cs: torch.Tensor,
-    #              current_ep: int,
-    #              t0: int,
-    #              gamma_max: int) -> torch.Tensor:
-    #     gamma = min(max(0, (current_ep - t0) / 100), gamma_max)
-    #     temp = lambda x: torch.exp(x / self.tau)
-    #     refl_sim = temp(self._sim(z1, z1) + gamma * cs + gamma * cs.unsqueeze(dim=1))
-    #     between_sim = temp(self._sim(z1, z2) + gamma * cs + gamma * cs.unsqueeze(dim=1))
-    #     return -torch.log(between_sim.diag() / (refl_sim.sum(1) + between_sim.sum(1) - refl_sim.diag()))
-    #
-    # def _batched_team_up(self,
-    #                      z1: torch.Tensor,
-    #                      z2: torch.Tensor,
-    #                      cs: torch.Tensor,
-    #                      current_ep: int,
-    #                      t0: int,
-    #                      gamma_max: int,
-    #                      batch_size: int) -> torch.Tensor:
-    #     gamma = min(max(0, (current_ep - t0) / 100), gamma_max)
-    #     device = z1.device
-    #     num_nodes = z1.size(0)
-    #     num_batches = (num_nodes - 1) // batch_size + 1
-    #     temp = lambda x: torch.exp(x / self.tau)
-    #     indices = torch.arange(0, num_nodes).to(device)
-    #     losses = []
-    #
-    #     for i in range(num_batches):
-    #         mask = indices[i * batch_size:(i + 1) * batch_size]
-    #         refl_sim = temp(self._sim(z1[mask], z1) + gamma * cs + gamma * cs.unsqueeze(dim=1)[mask])
-    #         between_sim = temp(self._sim(z1[mask], z2) + gamma * cs + gamma * cs.unsqueeze(dim=1)[mask])
-    #
-    #         losses.append(-torch.log(between_sim[:, i * batch_size:(i + 1) * batch_size].diag()
-    #                                  / (refl_sim.sum(1) + between_sim.sum(1)
-    #                                     - refl_sim[:, i * batch_size:(i + 1) * batch_size].diag())))
-    #
-    #     return torch.cat(losses)
-    #
-    # def infonce(self,
-    #             z1: torch.Tensor,
-    #             z2: torch.Tensor,
-    #             mean: bool = True,
-    #             batch_size: Optional[int] = None) -> torch.Tensor:
-    #     h1 = self.projection(z1)
-    #     h2 = self.projection(z2)
-    #
-    #     if batch_size is None:
-    #         l1 = self._infonce(h1, h2)
-    #         l2 = self._infonce(h2, h1)
-    #     else:
-    #         l1 = self._batched_infonce(h1, h2, batch_size)
-    #         l2 = self._batched_infonce(h2, h1, batch_size)
-    #
-    #     ret = (l1 + l2) * 0.5
-    #     ret = ret.mean() if mean else ret.sum()
-    #
-    #     return ret
-    #
-    # def team_up_loss(self,
-    #                  z1: torch.Tensor,
-    #                  z2: torch.Tensor,
-    #                  cs: np.ndarray,
-    #                  current_ep: int,
-    #                  t0: int = 0,
-    #                  gamma_max: int = 1,
-    #                  mean: bool = True,
-    #                  batch_size: Optional[int] = None) -> torch.Tensor:
-    #
-    #     h1 = self.projection(z1)
-    #     h2 = self.projection(z2)
-    #     cs = torch.from_numpy(cs).to(h1.device)
-    #     if batch_size is None:
-    #         l1 = self._team_up(h1, h2, cs, current_ep, t0, gamma_max)
-    #         l2 = self._team_up(h2, h1, cs, current_ep, t0, gamma_max)
-    #     else:
-    #         l1 = self._batched_team_up(h1, h2, cs, current_ep, t0, gamma_max, batch_size)
-    #         l2 = self._batched_team_up(h2, h1, cs, current_ep, t0, gamma_max, batch_size)
-    #     ret = (l1 + l2) * 0.5
-    #     ret = ret.mean() if mean else ret.sum()
-    #     return ret
-
-# 对于参数初始化的，然后进行了一个MLP，用于特征的映射
 class LogReg(nn.Module):
     def __init__(self, ft_in, nb_classes):
         super(LogReg, self).__init__()
