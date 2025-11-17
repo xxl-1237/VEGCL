@@ -5,9 +5,6 @@ import torch.nn as nn
 from src.model import LogReg
 from sklearn.metrics import f1_score
 
-
-# 评估代码，与utils一起看，就是为test节点那个acc做前置操作的，没什么用
-
 def get_idx_split(dataset, split, preload_split):
     if split[:4] == 'rand':
         train_ratio = float(split.split(':')[1])
