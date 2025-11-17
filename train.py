@@ -31,11 +31,9 @@ def new_generate_beta(lambda2):
 
 def VertexEnt(G,belta=None, perturb_strategy='default', printLog=False):
     """
-    近似计算的方法计算节点纠缠度
     :param G:
     :return:
     """
-    # 邻接矩阵
     # nodelist: list, optional:
     # The rows and columns are ordered according to the nodes in nodelist.
     # If nodelist is None, then the ordering is produced by G.nodes().
@@ -118,8 +116,7 @@ def VertexEnt(G,belta=None, perturb_strategy='default', printLog=False):
 
 def get_ve_nodeList(graph:nx, VE:np, dismantling_threshold=0.01):
     """
-    当网络中有较多相同的VE值时用该函数更合适，否则建议使用 get_ve_nodeList_quick 函数
-    :param graph: Note that nodes should be numbered starting from 0 #注意graph中要求节点从0开始编号
+    :param graph: Note that nodes should be numbered starting from 0 
     :param VE:
     :param dismantling_threshold:
     :return:
@@ -130,19 +127,18 @@ def get_ve_nodeList(graph:nx, VE:np, dismantling_threshold=0.01):
     if target_size <= 2:
         target_size = 2
 
-    delque = np.argsort(VE) #对VE从小到大进行排序，并获取排序后的索引列表
+    delque = np.argsort(VE) 
 
-    index_lists = [] #用于存储相同元素的索引
-    # 遍历排序后的索引列表
+    index_lists = [] 
+
     for i, index in enumerate(delque):
         if i == 0 or VE[index] != VE[delque[i - 1]]:
-            # 若当前元素与前一个元素不相同，则创建新的索引列表
             index_lists.append([index])
         else:
-            # 若当前元素与前一个元素相同，则将索引添加到当前列表中
+        
             index_lists[-1].append(index)
 
-    remove_list = [] #最终的移除顺序
+    remove_list = [] 
     gcc_list = []
     for same_VE_list in index_lists:
         while len(same_VE_list)>0:
@@ -152,7 +148,7 @@ def get_ve_nodeList(graph:nx, VE:np, dismantling_threshold=0.01):
             temp_gcc = get_gcc(G)
             if temp_gcc <= target_size:
                 break
-            remove_list.append(remove_node+1) #+1是因为 G中节点从0开始，而输出结果节点从1开始
+            remove_list.append(remove_node+1) 
             gcc_list.append(temp_gcc)
             del same_VE_list[max_index]
 
@@ -167,8 +163,8 @@ def get_ve_nodeList_quick(graph:nx, VE:np, dismantling_threshold=0.01):
         target_size = 2
 
     ds = np.array([G.degree(v) for v in range(G.number_of_nodes())])
-    delque = np.argsort(VE - ds / 100000) # 对VE从小到大进行排序，并获取排序后的索引列表
-    remove_list = []  # 最终的移除顺序
+    delque = np.argsort(VE - ds / 100000) 
+    remove_list = []  
     gcc_list = []
 
     for v in tqdm(delque, desc="Computing gcc", unit="node"):
@@ -183,26 +179,25 @@ def get_ve_nodeList_quick(graph:nx, VE:np, dismantling_threshold=0.01):
 
 
 def train(epoch: int) -> int:
-    #模型训练
     model.train()
-    optimizer.zero_grad() #把梯度置零
+    optimizer.zero_grad()
     
-    node_index_1 = cnd(data.edge_index, node_weight, p=param['cnd_drop_rate_1'], threshold=args.cnd_thr)
-    edge_index_1 = ced(data.edge_index, data.edge_weight, p=param['ced_drop_rate_1'], threshold=args.ced_thr)
-    z1 = model(data.x, node_index_1)
-    z2 = model(data.x, edge_index_1)
+    edge_index_1_relabeled, subset_1 = cnd(data.edge_index, node_weight, p=param['cnd_drop_rate_1'], threshold=args.cnd_thr)  # Now returns relabeled edges and subset
+    x_subset_1 = data.x[subset_1]  # Subset features for dropped view
+    edge_index_2 = ced(data.edge_index, edge_weight, p=param['ced_drop_rate_1'], threshold=args.ced_thr)  # Edge-dropped view (full nodes)
     
-    loss = model.loss(z1, z2, batch_size=0)
-
-    loss.backward() # 反向传播
-    optimizer.step() # 梯度更新
+    z1 = model(x_subset_1, edge_index_1_relabeled)  # View 1: smaller, relabeled
+    z2 = model(data.x, edge_index_2)  # View 2: full graph
+    
+    loss = model.loss(z1, z2, subset_1=subset_1, batch_size=0)  # Pass subset for alignment
+    loss.backward()
+    optimizer.step()
     return loss.item()
 
 def test() -> Dict:
-    # 测试节点
+  
     model.eval()
 
-    # 将torch的计算图固定，也就是no_grad操作
     with torch.no_grad():
         z = model(data.x, data.edge_index)
     res = {}
@@ -228,15 +223,15 @@ def test() -> Dict:
     res["f1"] = f1
     return res
 
-# 将数据转换为NetworkX图，并去除自环
+
 def to_networkx_no_selfloops(data):
     g = to_networkx(data, to_undirected=True)
-    node_mapping = {}  # 用于映射新旧节点编号关系
+    node_mapping = {}  
     new_node_id = 1
     edges_old = list(g.edges)
     with open(f"datasets/{netname}/edges.txt", 'w') as f:
         for edge in edges_old:
-            if edge[0] != edge[1]:  # 确保边没有自环
+            if edge[0] != edge[1]: 
                 if edge[0] not in node_mapping:
                     node_mapping[edge[0]] = new_node_id
                     new_node_id += 1
@@ -249,25 +244,24 @@ def to_networkx_no_selfloops(data):
 
 def to_linegraph(data):
     g = to_networkx(data, to_undirected=True)
-    l_g=nx.line_graph(g) #转换为线图
+    l_g=nx.line_graph(g) 
     G_int=nx.convert_node_labels_to_integers(l_g,first_label=-2)
     with open(f"datasets/{netname}/lg_edges.txt", 'w') as f:
         for edge in G_int.edges():
-            # 将边写入文件，格式为 "node1 node2"
+         
             f.write(f"{edge[0]} {edge[1]}\n")
     return l_g
 
-# 将数据转换为NetworkX线图，并去除自环
 def to_linenetworkx(data):
     g = to_networkx(data, to_undirected=True)
-    l_g=nx.line_graph(g) #转换为线图
-    node_mapping = {}  # 用于映射新旧节点编号关系
+    l_g=nx.line_graph(g) 
+    node_mapping = {} 
     new_node_id = 1
     edges_old = list(l_g.edges)
     lg=nx.Graph()
     with open(f"datasets/{netname}/lg_edges.txt", 'w') as f:
         for edge in edges_old:
-            if edge[0] != edge[1]:  # 确保边没有自环
+            if edge[0] != edge[1]: 
                 if edge[0] not in node_mapping:
                     node_mapping[edge[0]] = new_node_id
                     new_node_id += 1
@@ -293,8 +287,8 @@ if __name__ == '__main__':
     parser.add_argument('--cnd_thr', type=float, default=0.75)
     #VE参数
     parser.add_argument('--dth', default=0.01, help='dismantling_threshold')
-    parser.add_argument('--sort_strategy', default='default', choices=['default', 'quick'])  # 从VE值获取节点序列的策略
-    parser.add_argument('--perturb_strategy', default='default', choices=['default', 'remove'])  # 网络扰动策略
+    parser.add_argument('--sort_strategy', default='default', choices=['default', 'quick']) 
+    parser.add_argument('--perturb_strategy', default='default', choices=['default', 'remove'])  
     parser.add_argument('--belta', default=None)
 
     default_param = {
@@ -349,16 +343,16 @@ if __name__ == '__main__':
     device = torch.device(args.device)
     path = osp.join(args.dataset_path, args.dataset)
     dataset = get_dataset(path, args.dataset)
-    data = dataset[0] #得到第一个图的数据，因为使用的是一个图
+    data = dataset[0] 
     data = data.to(device)
     netname = args.dataset
-    # 创建一个一维张量，初始化所有权重为0并，赋值给 data.edge_weight
+    
     data.edge_weight = torch.zeros(data.edge_index.size(1),dtype=torch.float)
-    # # 重新编号的NetworkX图
+  
     # g = to_networkx_no_selfloops(data)
     # G = to_networkx(data, to_undirected=True)
-    # # print(f"edges已成功写入到文件")
-    # # #计算节点的VE
+ 
+    # # #compute VE of node
     # for netname in ['Cora']:#'CiteSeer', 'Coauthor-CS', 'Cora', 'PubMed'
     #     path = os.path.join('..', 'results', netname)
     #     path = os.path.join('results', netname)
@@ -382,19 +376,18 @@ if __name__ == '__main__':
     #         VE = np.loadtxt(ve_value_path).tolist()
 
     with open(f'results/{netname}/VE_value.txt', 'r') as file:
-    # 读取文件内容
+
         node_weight_lines = file.readlines()
-    # 移除每行末尾的换行符，并转换为浮点数
+
     node_weight_str = [float(line.strip()) for line in node_weight_lines]
-    # 将列表转换为NumPy数组
+ 
     node_weight_array = np.array(node_weight_str, dtype=np.float32)
     node_weight =torch.from_numpy(node_weight_array).to(data.edge_index.device)
 
-    # # # 计算边的VE
+    # # # compute VE of edge
     # g = to_networkx(data, to_undirected=True)
-    # l_g = nx.line_graph(g)  # 转换为线图
+    # l_g = nx.line_graph(g)  
     # L_G=nx.convert_node_labels_to_integers(l_g)
-    # print(f"lg_edges已成功写入到文件")
     # for netname in ['Cora']:
     #     path = os.path.join('results', netname)
     #     edge_path = os.path.join('datasets', netname,'lg_edges.txt')
@@ -415,20 +408,20 @@ if __name__ == '__main__':
     #         VE = np.loadtxt(ve_value_path).tolist()
 
     with open(f'results/{netname}/lg_VE_value.txt', 'r') as file:
-        # 读取文件内容
+  
         edge_weight_lines = file.readlines()
-    # 移除每行末尾的换行符，并转换为浮点数
+
     edge_weight_str = [float(line.strip()) for line in edge_weight_lines]
-    # 将列表转换为NumPy数组
+
     edge_weight_array = np.array(edge_weight_str)
 
     g = to_networkx(data, to_undirected=True)
     l_g = nx.line_graph(g)
-    node_mapping = {}  # 用于映射新旧节点编号关系
+    node_mapping = {} 
     new_edgeweight_id = 0
     edges_old = list(l_g.edges)
     for edge in edges_old:
-        if edge[0] != edge[1]:  # 确保边没有自环
+        if edge[0] != edge[1]:
             if edge[0] not in node_mapping:
                 node_mapping[edge[0]] = edge_weight_array[new_edgeweight_id]
                 new_edgeweight_id += 1
@@ -448,7 +441,6 @@ if __name__ == '__main__':
             i=i+1
 
 
-    # 接下来是构建model，先创建了一个GSGCL需要的一个encoder编码器，然后构建了Adam优化器来对model进行优化
     encoder = Encoder(dataset.num_features,
                       param['num_hidden'],
                       get_activation(param['activation']),
@@ -464,9 +456,8 @@ if __name__ == '__main__':
     last_epoch = 0
     log = args.verbose.split(',')
 
-    # 加下来这些代表训练步骤，epoch代表要运行的轮数
     for epoch in range(1 + last_epoch, param['num_epochs'] + 1):
-        loss = train(epoch) # 训练model，返回loss用于梯度更新
+        loss = train(epoch) 
         if 'train' in log:
             print(f'(T) | Epoch={epoch:03d}, loss={loss:.4f}')
         if epoch % args.val_interval == 0:
